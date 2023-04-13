@@ -1,12 +1,10 @@
-mod database;
-
 use std::env;
 use database::{Database};
 use actix_web::{middleware::Logger, App, HttpServer};
 use actix_web::web::Data;
 
 mod schema;
-
+mod database;
 mod service;
 
 #[actix_web::main]

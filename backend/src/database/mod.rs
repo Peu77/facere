@@ -4,7 +4,6 @@ use std::env;
 use diesel::{PgConnection, r2d2};
 use dotenvy::dotenv;
 
-use actix::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 
 pub fn pool() -> Pool<ConnectionManager<PgConnection>> {
@@ -18,10 +17,4 @@ pub fn pool() -> Pool<ConnectionManager<PgConnection>> {
 
 pub struct Database {
     pub connection: Pool<ConnectionManager<PgConnection>>,
-}
-
-unsafe impl Send for Database {}
-
-impl Actor for Database {
-    type Context = SyncContext<Self>;
 }
