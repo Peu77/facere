@@ -2,8 +2,9 @@ use diesel::prelude::*;
 
 use uuid::Uuid;
 use chrono::NaiveDateTime;
+use serde::Serialize;
 
-#[derive(Debug, Queryable)]
+#[derive(Debug, Queryable, Serialize)]
 pub struct User {
     pub uuid: Uuid,
     pub name: String,
