@@ -18,9 +18,9 @@ use crate::schema::users;
 
 #[derive(Insertable)]
 #[diesel(table_name = users)]
-pub struct NewUser {
+pub struct NewUser<'a>  {
     pub uuid: Uuid,
-    pub name: String,
-    pub email: String,
+    pub name: &'a String,
+    pub email: &'a String,
     pub password: String,
 }
