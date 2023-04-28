@@ -16,4 +16,7 @@ env_logger = "0.10.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 pwhash = "1"
+jsonwebtoken = "8.3.0"
+futures-util = "0.3.28"
+clippy = "0.0.302"
 

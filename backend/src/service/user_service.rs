@@ -1,6 +1,8 @@
-use actix_web::{post, get, web, HttpResponse, Responder};
+use actix::dev::Request;
+use actix_web::{post, get, web, HttpResponse, Responder, Scope};
+use actix_web::guard::{Guard, GuardContext};
 use actix_web::web::Path;
-use diesel::RunQueryDsl;
+
 use uuid::Uuid;
 use diesel::prelude::*;
 use pwhash::bcrypt;
@@ -9,13 +11,23 @@ use serde::Deserialize;
 use crate::database::Database;
 use crate::database::models::user_model::{NewUser, User};
 use crate::schema;
+use crate::middleware::{AuthenticationMiddleware, generate_token};
+use crate::AppState;
+use crate::schema::users;
 
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::scope("/user")
+pub fn user_service() -> Scope {
+    web::scope("/user")
         .service(create_user)
         .service(verify_user)
         .service(get_user)
-    );
+        .service(test)
+}
+
+
+#[get("/test")]
+async fn test(auth: AuthenticationMiddleware) -> impl Responder {
+    HttpResponse::Ok().body(auth.user.email)
+    // update user name
 }
 
 #[derive(Deserialize)]
@@ -25,8 +37,8 @@ struct UserCreateDto {
     password: String,
 }
 
-#[post("/new")]
-async fn create_user(data: web::Data<Database>, user_create_dto: web::Json<UserCreateDto>) -> impl Responder {
+#[post("/register")]
+async fn create_user(data: web::Data<AppState>, user_create_dto: web::Json<UserCreateDto>) -> impl Responder {
     let hashed_password = bcrypt::hash(user_create_dto.password.as_str()).unwrap();
     let new_user = NewUser {
         uuid: Uuid::new_v4(),
@@ -37,13 +49,16 @@ async fn create_user(data: web::Data<Database>, user_create_dto: web::Json<UserC
 
     let user: User = diesel::insert_into(schema::users::table)
         .values(new_user)
-        .get_result(&mut data.connection.get().unwrap())
+        .get_result(&mut data.db.connection.get().unwrap())
         .expect("Error saving new user");
 
     println!("User: {:?}", user);
 
+    let token = generate_token(&user.email, &data.secret);
 
-    HttpResponse::Ok().body("created user")
+    HttpResponse::Ok().json({
+        token
+    })
 }
 
 #[derive(Deserialize)]
@@ -53,11 +68,8 @@ struct UserVerifyDto {
 }
 
 #[post("/verify")]
-async fn verify_user(data: web::Data<Database>, user_verify_dto: web::Json<UserVerifyDto>) -> impl Responder {
-    let user: Option<User> = schema::users::table
-        .filter(schema::users::email.eq(user_verify_dto.email.as_str()))
-        .first::<User>(&mut data.connection.get().unwrap()).optional()
-        .unwrap();
+async fn verify_user(data: web::Data<AppState>, user_verify_dto: web::Json<UserVerifyDto>) -> impl Responder {
+    let user: Option<User> = get_user_by_email(user_verify_dto.email.as_str(), &data.db).await;
 
     let user = match user {
         Some(user) => user,
@@ -70,20 +82,33 @@ async fn verify_user(data: web::Data<Database>, user_verify_dto: web::Json<UserV
         HttpResponse::Ok().body("User verified")
     } else {
         HttpResponse::Unauthorized().body("User not verified")
-    }
+    };
 }
 
 #[get("/get/{id}")]
-async fn get_user(path: Path<Uuid>, data: web::Data<Database>) -> impl Responder {
+async fn get_user(path: Path<Uuid>, data: web::Data<AppState>) -> impl Responder {
     let id = path.into_inner();
 
-    let user: Option<User> = schema::users::table
-        .filter(schema::users::uuid.eq(id))
-        .first::<User>(&mut data.connection.get().unwrap()).optional()
-        .unwrap();
+    let user: Option<User> = get_user_by_uuid(id, &data.db).await;
 
     return match user {
         Some(user) => HttpResponse::Ok().json(user),
         None => HttpResponse::NotFound().body("User not found"),
     };
+}
+
+pub async fn get_user_by_email(email: &str, db: &Database) -> Option<User> {
+    schema::users::table
+        .filter(schema::users::columns::email.eq(email))
+        .first(&mut db.connection.get().unwrap())
+        .optional()
+        .expect("Error loading user")
+}
+
+pub async fn get_user_by_uuid(uuid: Uuid, db: &Database) -> Option<User> {
+    schema::users::table
+        .filter(schema::users::columns::uuid.eq(uuid))
+        .first(&mut db.connection.get().unwrap())
+        .optional()
+        .expect("Error loading user")
 }
